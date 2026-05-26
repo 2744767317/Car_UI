@@ -135,6 +135,15 @@ async calculatePath() {
             return;
         }
 
+        if (this.isAutowarePlanningMode && this.isAutowarePlanningMode()) {
+            await this.requestAutowareTrajectory();
+            return;
+        }
+
+        await this.calculateDemoPath();
+    },
+
+async calculateDemoPath() {
         if (this.isPointNearWall(this.startPoint) || this.isPointNearWall(this.endPoint)) {
             alert('起点或终点过于靠近障碍/墙体，请稍微偏移后重试');
             this.endpointPickMode = true;
@@ -147,47 +156,101 @@ async calculatePath() {
         this.playbackSegmentIndex = 0;
         this.playbackSegmentT = 0;
         this.playbackLastTimestamp = 0;
-        const path = this.aStar(this.startPoint, this.endPoint);
+        const path = this.runGridAStar(this.startPoint, this.endPoint);
         
         if (path && path.length >= 2) {
-            this.pathPoints = path;
-            this.carPosition = { ...this.pathPoints[0] };
+            this.demoPathPoints = path;
+            this.pathPoints = this.demoPathPoints;
+            this.carPosition = { ...this.demoPathPoints[0] };
             this.currentFrame = 0;
             this.updatePathDistance();
             this.persistSceneSnapshot();
             this.requestRender();
+            this.updatePlanningStatus?.('demo 路径完成', 'normal');
             void this.submitRouteToBackend();
             alert('路径规划完成，点击播放按钮开始模拟行驶');
         } else if (path && path.length === 1) {
-            this.pathPoints = path;
+            this.demoPathPoints = path;
+            this.pathPoints = this.demoPathPoints;
             this.currentFrame = 0;
             this.carPosition = { ...path[0] };
             this.updatePathDistance();
             this.persistSceneSnapshot();
             this.requestRender();
+            this.updatePlanningStatus?.('demo 路径完成', 'normal');
             alert('起点与终点在同一网格，车辆无需移动');
         } else {
             alert('无法找到可行路径');
-            this.pathPoints = [];
+            this.demoPathPoints = [];
+            this.pathPoints = this.demoPathPoints;
             this.currentFrame = 0;
             this.carPosition = { ...this.startPoint };
             this.endpointPickMode = true;
             this.updateEndpointButtonStyle();
             this.persistSceneSnapshot();
+            this.updatePlanningStatus?.('demo 规划失败', 'error');
             this.requestRender();
         }
     },
 
-updatePathDistance() {
-        if (this.pathPoints.length < 2) {
+async requestAutowareTrajectory() {
+        this.stopPlay();
+        this.playbackSegmentIndex = 0;
+        this.playbackSegmentT = 0;
+        this.playbackLastTimestamp = 0;
+        this.currentFrame = 0;
+        this.routePoints = [
+            { ...this.startPoint },
+            { ...this.endPoint }
+        ];
+        this.trajectoryPoints = [];
+        this.pathPoints = this.trajectoryPoints;
+        this.updatePathDistance();
+
+        this.pendingAutowareGoal = {
+            type: 'set_goal',
+            frame_id: 'map',
+            goal: {
+                x: this.endPoint.x,
+                y: this.endPoint.y,
+                z: 0,
+                yaw: Number.isFinite(this.selectedGoalYaw) ? this.selectedGoalYaw : 0
+            },
+            timestamp: Date.now()
+        };
+
+        this.persistSceneSnapshot();
+        this.updatePlanningStatus?.('发送 goal 中', 'warning');
+        this.requestRender();
+
+        const submitted = await this.submitPlanningGoalToBackend();
+        if (submitted) {
+            this.updatePlanningStatus?.('等待 trajectory', 'warning');
+            alert('目标点已下发，等待后端 / Autoware 推送 trajectory');
+        } else {
+            this.updatePlanningStatus?.('goal 未发送', 'error');
+            alert('目标点未发送，请检查 routeEndpoint 或后端服务');
+        }
+    },
+
+getActivePathPoints() {
+        if (this.trajectoryPoints?.length >= 2) return this.trajectoryPoints;
+        if (this.demoPathPoints?.length >= 2) return this.demoPathPoints;
+        if (this.routePoints?.length >= 2) return this.routePoints;
+        return this.pathPoints || [];
+    },
+
+updatePathDistance(points = null) {
+        const sourcePoints = points || this.getActivePathPoints();
+        if (sourcePoints.length < 2) {
             document.getElementById('path-distance').textContent = '0.00';
             return;
         }
 
         let distance = 0;
-        for (let i = 1; i < this.pathPoints.length; i++) {
-            const dx = this.pathPoints[i].x - this.pathPoints[i-1].x;
-            const dy = this.pathPoints[i].y - this.pathPoints[i-1].y;
+        for (let i = 1; i < sourcePoints.length; i++) {
+            const dx = sourcePoints[i].x - sourcePoints[i-1].x;
+            const dy = sourcePoints[i].y - sourcePoints[i-1].y;
             distance += Math.sqrt(dx * dx + dy * dy);
         }
         
@@ -221,7 +284,7 @@ clampPointToBounds(point) {
         };
     },
 
-aStar(start, end) {
+runGridAStar(start, end) {
         const gridSize = 0.3;
         const startGrid = this.worldToGrid(start, gridSize);
         const endGrid = this.worldToGrid(end, gridSize);
@@ -343,7 +406,9 @@ reconstructPath(cameFrom, current, gridSize) {
     },
 
 play() {
-        if (this.isPlaying || this.pathPoints.length < 2) return;
+        const playbackPoints = this.demoPathPoints?.length >= 2 ? this.demoPathPoints : this.pathPoints;
+        if (this.isPlaying || playbackPoints.length < 2) return;
+        this.pathPoints = playbackPoints;
         this.isPlaying = true;
         this.playbackSegmentIndex = 0;
         this.playbackSegmentT = 0;
@@ -409,16 +474,18 @@ animateCar(timestamp = performance.now()) {
     },
 
 prevFrame() {
-        if (this.pathPoints.length === 0) return;
+        const playbackPoints = this.pathPoints || [];
+        if (playbackPoints.length === 0) return;
         this.currentFrame = Math.max(0, this.currentFrame - 3);
-        this.carPosition = { ...this.pathPoints[this.currentFrame] };
+        this.carPosition = { ...playbackPoints[this.currentFrame] };
         this.requestRender();
     },
 
 nextFrame() {
-        if (this.pathPoints.length === 0) return;
-        this.currentFrame = Math.min(this.pathPoints.length - 1, this.currentFrame + 3);
-        this.carPosition = { ...this.pathPoints[this.currentFrame] };
+        const playbackPoints = this.pathPoints || [];
+        if (playbackPoints.length === 0) return;
+        this.currentFrame = Math.min(playbackPoints.length - 1, this.currentFrame + 3);
+        this.carPosition = { ...playbackPoints[this.currentFrame] };
         this.requestRender();
     }
 };

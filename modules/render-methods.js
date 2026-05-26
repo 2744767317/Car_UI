@@ -30,7 +30,8 @@ render() {
         this.drawObstacles();
         this.drawPointCloud();
         this.drawOsm();
-        this.drawPath();
+        this.drawPathLayers();
+        this.drawDetectedObjects();
         this.drawStartEndPoints();
         this.drawCar();
     },
@@ -190,34 +191,138 @@ drawPointCloud() {
         }
     },
 
-drawPath() {
-        if (this.pathPoints.length < 2) return;
-        
-        this.ctx.beginPath();
-        this.ctx.strokeStyle = 'rgba(0, 255, 136, 0.8)';
-        this.ctx.lineWidth = 4;
-        this.ctx.setLineDash([12, 6]);
+drawPathLayers() {
+        this.drawPolylineLayer(this.routePoints, {
+            strokeStyle: 'rgba(0, 153, 255, 0.82)',
+            lineWidth: 6,
+            dash: [],
+            waypointEvery: 0
+        });
 
-        const first = this.worldToScreen(this.pathPoints[0].x, this.pathPoints[0].y);
+        this.drawPolylineLayer(this.demoPathPoints, {
+            strokeStyle: 'rgba(0, 255, 136, 0.76)',
+            lineWidth: 4,
+            dash: [12, 6],
+            waypointEvery: 3
+        });
+
+        this.drawPolylineLayer(this.trajectoryPoints, {
+            strokeStyle: 'rgba(57, 255, 126, 0.95)',
+            lineWidth: 4,
+            dash: [],
+            waypointEvery: 6
+        });
+    },
+
+drawPolylineLayer(points, options = {}) {
+        if (!Array.isArray(points) || points.length < 2) return;
+
+        const {
+            strokeStyle = 'rgba(0, 255, 136, 0.8)',
+            lineWidth = 4,
+            dash = [],
+            waypointEvery = 0
+        } = options;
+
+        this.ctx.beginPath();
+        this.ctx.strokeStyle = strokeStyle;
+        this.ctx.lineWidth = lineWidth;
+        this.ctx.setLineDash(dash);
+
+        const first = this.worldToScreen(points[0].x, points[0].y);
         this.ctx.moveTo(first.x, first.y);
 
-        for (let i = 1; i < this.pathPoints.length; i++) {
-            const screenPos = this.worldToScreen(this.pathPoints[i].x, this.pathPoints[i].y);
+        for (let i = 1; i < points.length; i++) {
+            const screenPos = this.worldToScreen(points[i].x, points[i].y);
             this.ctx.lineTo(screenPos.x, screenPos.y);
         }
         
         this.ctx.stroke();
         this.ctx.setLineDash([]);
-        
-        this.pathPoints.forEach((point, index) => {
-            if (index % 3 === 0) {
+
+        if (waypointEvery > 0) {
+            points.forEach((point, index) => {
+                if (index % waypointEvery !== 0) return;
                 const screenPos = this.worldToScreen(point.x, point.y);
-                this.ctx.fillStyle = 'rgba(0, 255, 136, 0.9)';
+                this.ctx.fillStyle = strokeStyle;
                 this.ctx.beginPath();
-                this.ctx.arc(screenPos.x, screenPos.y, 5, 0, Math.PI * 2);
+                this.ctx.arc(screenPos.x, screenPos.y, 4, 0, Math.PI * 2);
                 this.ctx.fill();
-            }
-        });
+            });
+        }
+    },
+
+drawDetectedObjects() {
+        if (!Array.isArray(this.detectedObjects) || this.detectedObjects.length === 0) return;
+
+        for (const object of this.detectedObjects) {
+            this.drawDetectedObject(object);
+        }
+    },
+
+drawDetectedObject(object) {
+        if (!object || !Number.isFinite(object.x) || !Number.isFinite(object.y)) return;
+
+        const center = this.worldToScreen(object.x, object.y);
+        const yaw = Number.isFinite(object.yaw) ? object.yaw : 0;
+        const length = Math.max(0.4, Number(object.length) || 1.2);
+        const width = Math.max(0.3, Number(object.width) || 0.7);
+        const screenLength = length * this.mapScale;
+        const screenWidth = width * this.mapScale;
+
+        this.ctx.save();
+        this.ctx.translate(center.x, center.y);
+        this.ctx.rotate(-yaw);
+        this.ctx.strokeStyle = 'rgba(255, 196, 0, 0.95)';
+        this.ctx.lineWidth = 2;
+        this.ctx.fillStyle = 'rgba(255, 196, 0, 0.12)';
+        this.ctx.beginPath();
+        this.ctx.rect(-screenLength / 2, -screenWidth / 2, screenLength, screenWidth);
+        this.ctx.fill();
+        this.ctx.stroke();
+        this.ctx.restore();
+
+        const label = object.label || object.type || object.classification || 'object';
+        const speed = Number.isFinite(object.speed) ? ` ${object.speed.toFixed(1)}m/s` : '';
+        this.ctx.fillStyle = '#ffc400';
+        this.ctx.font = '12px Arial';
+        this.ctx.fillText(`${label}${speed}`, center.x + 8, center.y - 8);
+
+        if (Number.isFinite(object.vx) || Number.isFinite(object.vy) || Number.isFinite(object.speed)) {
+            const vx = Number.isFinite(object.vx) ? object.vx : Math.cos(yaw) * (object.speed || 0);
+            const vy = Number.isFinite(object.vy) ? object.vy : Math.sin(yaw) * (object.speed || 0);
+            this.drawVelocityArrow(object.x, object.y, vx, vy);
+        }
+
+        if (Array.isArray(object.predictedPath) && object.predictedPath.length >= 2) {
+            this.drawPolylineLayer(object.predictedPath, {
+                strokeStyle: 'rgba(255, 196, 0, 0.46)',
+                lineWidth: 2,
+                dash: [4, 4],
+                waypointEvery: 0
+            });
+        }
+    },
+
+drawVelocityArrow(x, y, vx, vy) {
+        const start = this.worldToScreen(x, y);
+        const end = this.worldToScreen(x + vx, y + vy);
+        const angle = Math.atan2(end.y - start.y, end.x - start.x);
+
+        this.ctx.strokeStyle = 'rgba(255, 196, 0, 0.9)';
+        this.ctx.fillStyle = 'rgba(255, 196, 0, 0.9)';
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.moveTo(start.x, start.y);
+        this.ctx.lineTo(end.x, end.y);
+        this.ctx.stroke();
+
+        this.ctx.beginPath();
+        this.ctx.moveTo(end.x, end.y);
+        this.ctx.lineTo(end.x - Math.cos(angle - 0.45) * 8, end.y - Math.sin(angle - 0.45) * 8);
+        this.ctx.lineTo(end.x - Math.cos(angle + 0.45) * 8, end.y - Math.sin(angle + 0.45) * 8);
+        this.ctx.closePath();
+        this.ctx.fill();
     },
 
 drawStartEndPoints() {
@@ -256,10 +361,15 @@ drawCar() {
         this.ctx.translate(x, y);
         
         let angle = 0;
-        if (this.pathPoints.length > 1 && this.currentFrame > 0 && this.currentFrame < this.pathPoints.length) {
-            const prev = this.pathPoints[this.currentFrame - 1];
-            const curr = this.pathPoints[this.currentFrame];
+        if (this.vehicleYaw !== null && Number.isFinite(this.vehicleYaw)) {
+            angle = this.vehicleYaw;
+        } else {
+            const fallbackPath = this.pathPoints || this.demoPathPoints || this.trajectoryPoints || [];
+            if (fallbackPath.length > 1 && this.currentFrame > 0 && this.currentFrame < fallbackPath.length) {
+            const prev = fallbackPath[this.currentFrame - 1];
+            const curr = fallbackPath[this.currentFrame];
             angle = Math.atan2(curr.y - prev.y, curr.x - prev.x);
+            }
         }
         this.ctx.rotate(angle);
 

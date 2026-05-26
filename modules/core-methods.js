@@ -4,6 +4,7 @@ init() {
         this.resizeCanvas();
         this.setupEventListeners();
         this.syncControlStateFromUI();
+        this.initRealtimeSource();
         void this.loadStartupScene();
         this.requestRender();
     },

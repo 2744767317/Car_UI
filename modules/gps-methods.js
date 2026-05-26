@@ -351,12 +351,14 @@ convertGeoToWorld(lon, lat) {
 
 async submitRouteToBackend() {
         if (!this.backendConfig.routeEndpoint) return;
-        if (!this.startPoint || !this.endPoint || this.pathPoints.length < 2) return;
+        const demoPath = this.demoPathPoints?.length ? this.demoPathPoints : this.pathPoints;
+        if (!this.startPoint || !this.endPoint || demoPath.length < 2) return;
 
         const payload = {
+            mode: 'demo',
             start: this.startPoint,
             end: this.endPoint,
-            path: this.pathPoints,
+            path: demoPath,
             timestamp: Date.now()
         };
 
@@ -371,6 +373,44 @@ async submitRouteToBackend() {
             });
         } catch (error) {
             console.warn('路径提交后端失败:', error);
+        }
+    },
+
+async submitPlanningGoalToBackend() {
+        const endpoint = this.backendConfig.planningEndpoint || this.backendConfig.routeEndpoint;
+        if (!endpoint) return false;
+        if (!this.startPoint || !this.endPoint) return false;
+
+        const payload = {
+            type: 'set_goal',
+            frame_id: 'map',
+            goal: {
+                x: this.endPoint.x,
+                y: this.endPoint.y,
+                z: 0,
+                yaw: Number.isFinite(this.selectedGoalYaw) ? this.selectedGoalYaw : 0
+            },
+            timestamp: Date.now()
+        };
+
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(this.backendConfig.headers || {})
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            return true;
+        } catch (error) {
+            console.warn('规划目标点提交后端失败:', error);
+            return false;
         }
     }
 };

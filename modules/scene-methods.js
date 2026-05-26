@@ -4,10 +4,12 @@ createBackendConfig() {
         const defaults = {
             gpsEndpoint: '/api/gps/current',
             routeEndpoint: '/api/route/submit',
+            planningEndpoint: '',
             method: 'GET',
             headers: {},
             useGpsOnSetEndpoint: true,
-            gpsSource: 'backend'
+            gpsSource: 'backend',
+            planningMode: 'demo'
         };
 
         if (!window.APP_CONFIG || typeof window.APP_CONFIG !== 'object') {
@@ -17,13 +19,21 @@ createBackendConfig() {
         return {
             gpsEndpoint: window.APP_CONFIG.gpsEndpoint || defaults.gpsEndpoint,
             routeEndpoint: window.APP_CONFIG.routeEndpoint || defaults.routeEndpoint,
+            planningEndpoint: window.APP_CONFIG.planningEndpoint || window.APP_CONFIG.routeEndpoint || defaults.planningEndpoint,
             method: window.APP_CONFIG.gpsMethod || defaults.method,
             headers: window.APP_CONFIG.headers || defaults.headers,
             useGpsOnSetEndpoint: window.APP_CONFIG.useGpsOnSetEndpoint !== undefined
                 ? !!window.APP_CONFIG.useGpsOnSetEndpoint
                 : defaults.useGpsOnSetEndpoint,
-            gpsSource: (window.APP_CONFIG.gpsSource || defaults.gpsSource).toLowerCase()
+            gpsSource: (window.APP_CONFIG.gpsSource || defaults.gpsSource).toLowerCase(),
+            planningMode: this.normalizePlanningMode(window.APP_CONFIG.planningMode || defaults.planningMode)
         };
+    },
+
+normalizePlanningMode(mode) {
+        const normalized = String(mode || '').trim().toLowerCase();
+        if (normalized === 'autoware' || normalized === 'autoware_mode') return 'autoware';
+        return 'demo';
     },
 
 createScenePresetConfig() {
@@ -134,6 +144,9 @@ applyStartPoint(point) {
         this.stopPlay();
         this.startPoint = { x: Number(point.x), y: Number(point.y) };
         this.endPoint = null;
+        this.demoPathPoints = [];
+        this.routePoints = [];
+        this.trajectoryPoints = [];
         this.pathPoints = [];
         this.currentFrame = 0;
         this.carPosition = { ...this.startPoint };

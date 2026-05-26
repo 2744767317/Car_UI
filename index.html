@@ -15,7 +15,14 @@
             gpsMethod: 'GET',
             headers: {},
             useGpsOnSetEndpoint: false,
-            gpsSource: 'browser'
+            gpsSource: 'browser',
+            planningMode: 'demo',
+            wsEndpoint: 'ws://localhost:8765/ws',
+            enableWebSocket: false,
+            planningEndpoint: 'http://127.0.0.1:8765/api/route/submit',
+            realtimeAutoConnect: false,
+            realtimeReconnectMs: 1500,
+            realtimePoseTimeoutMs: 3000
         };
 
         // 场景默认配置：首次打开时会按这里加载
@@ -38,19 +45,31 @@
         <header class="status-bar">
             <div class="status-item">
                 <span class="label">驾驶状态:</span>
-                <span class="value driving">智能驾驶</span>
+                <span class="value driving" id="drive-status">智能驾驶</span>
             </div>
             <div class="status-item">
                 <span class="label">定位状态:</span>
-                <span class="value normal">正常</span>
+                <span class="value normal" id="localization-status">正常</span>
             </div>
             <div class="status-item">
                 <span class="label">电量:</span>
-                <span class="value">54.4%</span>
+                <span class="value" id="battery-status">54.4%</span>
             </div>
             <div class="status-item">
                 <span class="label">档位:</span>
-                <span class="value">自动</span>
+                <span class="value" id="gear-status">自动</span>
+            </div>
+            <div class="status-item">
+                <span class="label">实时源:</span>
+                <span class="value offline" id="realtime-status">未连接</span>
+            </div>
+            <div class="status-item">
+                <span class="label">规划模式:</span>
+                <span class="value normal" id="planning-mode-status">demo_mode</span>
+            </div>
+            <div class="status-item">
+                <span class="label">规划状态:</span>
+                <span class="value offline" id="planning-status">待命</span>
             </div>
         </header>
 
@@ -97,6 +116,25 @@
                     <button class="btn btn-secondary" id="calibrate-gps">校准GPS到当前点</button>
                     <button class="btn btn-secondary" id="update-start-from-gps">GPS更新起点</button>
                     <button class="btn btn-outline" id="toggle-gps-track">开启GPS跟踪</button>
+                    <button class="btn btn-outline" id="toggle-realtime">连接模拟数据</button>
+                    <div class="realtime-readout">
+                        <div>
+                            <span>实时位置</span>
+                            <strong id="realtime-pose">--</strong>
+                        </div>
+                        <div>
+                            <span>车辆朝向</span>
+                            <strong id="realtime-yaw">--</strong>
+                        </div>
+                        <div>
+                            <span>实时速度</span>
+                            <strong id="realtime-speed">--</strong>
+                        </div>
+                        <div>
+                            <span>定位坐标系</span>
+                            <strong id="realtime-frame">--</strong>
+                        </div>
+                    </div>
                 </div>
             </aside>
 
@@ -179,6 +217,7 @@
     <script src="modules/core-methods.js"></script>
     <script src="modules/controls-methods.js"></script>
     <script src="modules/gps-methods.js"></script>
+    <script src="modules/realtime-methods.js"></script>
     <script src="modules/scene-methods.js"></script>
     <script src="modules/interactionPath-methods.js"></script>
     <script src="modules/render-methods.js"></script>

@@ -2,6 +2,7 @@ const {
     coreMethods = {},
     controlsMethods = {},
     gpsMethods = {},
+    realtimeMethods = {},
     sceneMethods = {},
     interactionPathMethods = {},
     renderMethods = {},
@@ -14,6 +15,10 @@ class PointCloudVisualizer {
         this.ctx = this.canvas.getContext('2d');
         this.points = [];
         this.pathPoints = [];
+        this.demoPathPoints = [];
+        this.routePoints = [];
+        this.trajectoryPoints = [];
+        this.detectedObjects = [];
         this.renderMode = 'intensity';
         this.pointSize = 3;
         this.isPlaying = false;
@@ -50,6 +55,12 @@ class PointCloudVisualizer {
         this.drivingMode = 'point-to-point';
         this.mouseMoveThrottleMs = 33;
         this.lastMouseCoordUpdateAt = 0;
+        this.vehicleYaw = null;
+        this.vehicleSpeed = 0;
+        this.vehiclePoseTimestamp = 0;
+        this.vehiclePose = null;
+        this.connectionStatus = 'offline';
+        this.selectedGoalYaw = 0;
 
         this.osmWays = [];
         this.osmGeoRef = null;
@@ -63,6 +74,15 @@ class PointCloudVisualizer {
         this.osmCache = { key: '', worldWays: [] };
 
         this.backendConfig = this.createBackendConfig();
+        this.realtimeConfig = this.createRealtimeConfig();
+        this.realtimeSocket = null;
+        this.realtimeEnabled = false;
+        this.realtimeConnected = false;
+        this.realtimeReconnectTimer = 0;
+        this.realtimeReconnectAttempts = 0;
+        this.realtimeHealthTimer = 0;
+        this.realtimeLastMessageAt = 0;
+        this.realtimeLastPose = null;
         this.sceneStorageKey = 'point_cloud_scene_v1';
         this.scenePreset = this.createScenePresetConfig();
         this.currentPcdFile = this.scenePreset.pcdFile || 'pointcloud_map.pcd';
@@ -87,6 +107,7 @@ Object.assign(
     coreMethods,
     controlsMethods,
     gpsMethods,
+    realtimeMethods,
     sceneMethods,
     interactionPathMethods,
     renderMethods,

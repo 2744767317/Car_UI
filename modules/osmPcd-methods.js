@@ -526,6 +526,9 @@ applyParsedPoints(rawPoints) {
         this.calculateBounds();
         this.updateView();
         this.generateObstacles();
+        this.demoPathPoints = [];
+        this.routePoints = [];
+        this.trajectoryPoints = [];
         this.pathPoints = [];
         this.startPoint = null;
         this.endPoint = null;

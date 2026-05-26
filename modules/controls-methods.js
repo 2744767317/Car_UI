@@ -53,6 +53,10 @@ setupEventListeners() {
             this.toggleGpsTracking();
         });
 
+        document.getElementById('toggle-realtime').addEventListener('click', () => {
+            this.toggleRealtimeSource();
+        });
+
         document.getElementById('close-driving').addEventListener('click', () => {
             this.closeDriving();
         });
@@ -168,6 +172,9 @@ setDrivingMode(mode) {
         } else {
             this.startPoint = null;
             this.endPoint = null;
+            this.demoPathPoints = [];
+            this.routePoints = [];
+            this.trajectoryPoints = [];
             this.pathPoints = [];
             this.currentFrame = 0;
         }
@@ -223,6 +230,9 @@ sendCoordinates() {
             this.stopPlay();
             this.startPoint = worldPos;
             this.endPoint = null;
+            this.demoPathPoints = [];
+            this.routePoints = [];
+            this.trajectoryPoints = [];
             this.pathPoints = [];
             this.currentFrame = 0;
             this.carPosition = { ...worldPos };
@@ -301,7 +311,7 @@ openPathManagement() {
         const startText = this.startPoint ? `(${this.startPoint.x.toFixed(2)}, ${this.startPoint.y.toFixed(2)})` : "未设置";
         const endText = this.endPoint ? `(${this.endPoint.x.toFixed(2)}, ${this.endPoint.y.toFixed(2)})` : "未设置";
         const obstacleText = this.obstacleAvoidanceEnabled ? "开启" : "关闭";
-        alert(`路径管理\n起点: ${startText}\n终点: ${endText}\n路径点数量: ${this.pathPoints.length}\n绕障模式: ${obstacleText}`);
+        alert(`路径管理\n起点: ${startText}\n终点: ${endText}\ndemo点数: ${this.demoPathPoints.length}\nroute点数: ${this.routePoints.length}\ntrajectory点数: ${this.trajectoryPoints.length}\n绕障模式: ${obstacleText}`);
     },
 
 uploadPoints() {
