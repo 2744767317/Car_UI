@@ -1,0 +1,201 @@
+﻿﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>车载点对点控制页面</title>
+    <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+    <script>
+        // 允许父页面在 iframe 加载前注入运行时配置
+        // 未注入时回退到默认值，保持单页直接打开也可用
+        const injectedAppConfig = window.parent && window.parent !== window
+            ? window.parent.__CAR_RUNTIME_APP_CONFIG__
+            : null;
+        const injectedBackend = injectedAppConfig && injectedAppConfig.backend
+            ? injectedAppConfig.backend
+            : null;
+        const injectedScene = injectedAppConfig && injectedAppConfig.scene
+            ? injectedAppConfig.scene
+            : null;
+
+        // 设备接入时可改成实际后端地址
+        window.APP_CONFIG = injectedBackend || {
+            gpsEndpoint: '/api/gps/current',
+            routeEndpoint: '/api/route/submit',
+            gpsMethod: 'GET',
+            headers: {},
+            useGpsOnSetEndpoint: false,
+            gpsSource: 'browser'
+        };
+
+        // 场景默认配置：首次打开时会按这里加载
+        // 后续你在页面上的调整会自动保存，下次打开优先恢复保存值
+        window.APP_SCENE = injectedScene || {
+            pcdFile: 'pointcloud_map.pcd',
+            osmFile: 'lanelet2_map.osm',
+            startPoint: { x: 23.58353111862323, y: 14.975903991841252 },
+            osmSettings: {
+                visible: true,
+                opacity: 0.8,
+                scalePercent: 100,
+                rotationDeg: 0,
+                offsetX: -3.5,
+                offsetY: -7.5
+            }
+        };
+    </script>
+    <div class="container">
+        <header class="status-bar">
+            <div class="status-item">
+                <span class="label">驾驶状态:</span>
+                <span class="value driving">智能驾驶</span>
+            </div>
+            <div class="status-item">
+                <span class="label">定位状态:</span>
+                <span class="value normal">正常</span>
+            </div>
+            <div class="status-item">
+                <span class="label">电量:</span>
+                <span class="value">54.4%</span>
+            </div>
+            <div class="status-item">
+                <span class="label">档位:</span>
+                <span class="value">自动</span>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <aside class="left-panel">
+                <div class="section">
+                    <h3>智能驾驶</h3>
+                    <button class="btn btn-outline" id="close-driving">关闭智能驾驶</button>
+                    <button class="btn btn-danger" id="exit-program">结束程序</button>
+                </div>
+
+                <div class="section">
+                    <h3>驾驶模式</h3>
+                    <div class="mode-group">
+                        <button class="btn mode-btn" id="fixed-route">固定线路</button>
+                        <button class="btn mode-btn active" id="point-to-point">点对点</button>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3>功能设置</h3>
+                    <button class="btn btn-secondary" id="enable-obstacle">允许绕障</button>
+                    <button class="btn btn-secondary" id="return-start">回到起始点</button>
+                    <button class="btn btn-secondary" id="set-endpoint">设置终点</button>
+                </div>
+
+                <div class="section">
+                    <h3>地图上选择一个点:</h3>
+                    <div class="coord-input">
+                        <div class="input-row">
+                            <label>X:</label>
+                            <input type="text" id="coord-x" value="0.0" readonly>
+                        </div>
+                        <div class="input-row">
+                            <label>Y:</label>
+                            <input type="text" id="coord-y" value="0.0" readonly>
+                        </div>
+                        <div class="input-row">
+                            <label>Z:</label>
+                            <input type="text" id="coord-z" value="0.0" readonly>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" id="send-coord">坐标下发</button>
+                    <button class="btn btn-secondary" id="calibrate-gps">校准GPS到当前点</button>
+                    <button class="btn btn-secondary" id="update-start-from-gps">GPS更新起点</button>
+                    <button class="btn btn-outline" id="toggle-gps-track">开启GPS跟踪</button>
+                </div>
+            </aside>
+
+            <section class="map-panel">
+                <div class="map-container">
+                    <canvas id="point-cloud-canvas"></canvas>
+                    <div class="map-controls">
+                        <div class="control-item">
+                            <label>渲染模式:</label>
+                            <select id="render-mode">
+                                <option value="intensity" selected>强度渲染</option>
+                                <option value="color">颜色渲染</option>
+                                <option value="height">高度渲染</option>
+                            </select>
+                        </div>
+                        <div class="control-item">
+                            <label>点大小:</label>
+                            <input type="range" id="point-size" min="1" max="10" value="3">
+                        </div>
+                        <div class="control-item">
+                            <label>视距:</label>
+                            <input type="range" id="view-distance" min="5" max="50" value="20">
+                        </div>
+                        <div class="control-item">
+                            <label>OSM显示:</label>
+                            <input type="checkbox" id="osm-visible" checked>
+                        </div>
+                        <div class="control-item">
+                            <label>OSM透明度:</label>
+                            <input type="range" id="osm-opacity" min="10" max="100" value="80">
+                        </div>
+                        <div class="control-item">
+                            <label>OSM缩放(%):</label>
+                            <input type="range" id="osm-scale" min="20" max="300" value="100">
+                        </div>
+                        <div class="control-item">
+                            <label>OSM旋转(°):</label>
+                            <input type="range" id="osm-rotation" min="-180" max="180" value="0">
+                        </div>
+                        <div class="control-item">
+                            <label>OSM偏移X:</label>
+                            <input type="number" id="osm-offset-x" step="0.5" value="0">
+                        </div>
+                        <div class="control-item">
+                            <label>OSM偏移Y:</label>
+                            <input type="number" id="osm-offset-y" step="0.5" value="0">
+                        </div>
+                    </div>
+                    <div class="path-info">
+                        <span>路径距离:</span>
+                        <span id="path-distance">0.00</span>
+                        <span>m</span>
+                    </div>
+                </div>
+            </section>
+
+            <aside class="right-panel">
+                <button class="btn btn-success" id="select-file">选择文件</button>
+                <button class="btn btn-info" id="select-osm-file">导入OSM</button>
+                <button class="btn btn-secondary" id="clear-osm-file">清除OSM</button>
+                <button class="btn btn-warning" id="play">播放</button>
+                <button class="btn btn-info" id="prev-frame">上一帧</button>
+                <button class="btn btn-info" id="next-frame">下一帧</button>
+                <button class="btn btn-danger" id="stop-play">停止播放</button>
+            </aside>
+        </main>
+
+        <footer class="footer-bar">
+            <button class="btn btn-icon" id="settings" aria-label="设置">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+            </button>
+            <button class="btn btn-icon-primary" id="path-management">路径管理</button>
+            <button class="btn btn-icon-primary" id="upload-points">站点上传</button>
+        </footer>
+    </div>
+
+    <script src="./modules/core-methods.js"></script>
+    <script src="./modules/controls-methods.js"></script>
+    <script src="./modules/gps-methods.js"></script>
+    <script src="./modules/scene-methods.js"></script>
+    <script src="./modules/interactionPath-methods.js"></script>
+    <script src="./modules/render-methods.js"></script>
+    <script src="./modules/osmPcd-methods.js"></script>
+    <script src="./app.js"></script>
+</body>
+</html>
+
