@@ -19,6 +19,21 @@ class PointCloudVisualizer {
         this.routePoints = [];
         this.trajectoryPoints = [];
         this.detectedObjects = [];
+        this.objectFilters = {
+            vehicle: true,
+            pedestrian: true,
+            bicycle: true,
+            unknown: true
+        };
+        this.objectSafety = {
+            nearestDistance: null,
+            inSafetyZone: false,
+            aheadOnTrajectory: false,
+            ttc: null
+        };
+        this.safetyZoneRadius = 3;
+        this.trajectoryAheadDistance = 8;
+        this.trajectoryLateralThreshold = 1.5;
         this.renderMode = 'intensity';
         this.pointSize = 3;
         this.isPlaying = false;

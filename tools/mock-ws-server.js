@@ -24,6 +24,7 @@ const tickMs = Number(args.get('tick-ms') || process.env.MOCK_WS_TICK_MS || 100)
 const clients = new Set();
 const startTime = Date.now();
 let latestGoal = null;
+const protocol = 'ros2_gateway.v1';
 
 const route = [
     { x: 23.58353111862323, y: 14.975903991841252 },
@@ -110,13 +111,18 @@ function getPose(now) {
                 type: 'vehicle_pose',
                 timestamp: now,
                 frame_id: 'map',
+                child_frame_id: 'base_link',
                 x,
                 y,
                 z: 0,
                 roll: 0,
                 pitch: 0,
                 yaw,
-                speed
+                speed,
+                tf_delay_ms: 36,
+                pose_age_ms: Math.max(0, Date.now() - now),
+                map_alignment: '已校准',
+                yaw_source: 'localization'
             };
         }
         cursor += segmentLength;
@@ -127,13 +133,18 @@ function getPose(now) {
         type: 'vehicle_pose',
         timestamp: now,
         frame_id: 'map',
+        child_frame_id: 'base_link',
         x: last.x,
         y: last.y,
         z: 0,
         roll: 0,
         pitch: 0,
         yaw: 0,
-        speed
+        speed,
+        tf_delay_ms: 36,
+        pose_age_ms: Math.max(0, Date.now() - now),
+        map_alignment: '已校准',
+        yaw_source: 'localization'
     };
 }
 
@@ -221,6 +232,7 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({
         name: 'car-ui-mock-ws-server',
+        protocol,
         websocket: `ws://${host}:${port}/ws`,
         routeEndpoint: `http://${host}:${port}/api/route/submit`,
         clients: clients.size
@@ -307,11 +319,42 @@ function getPerceptionObjects(now) {
                 { x: 22.8, y: 19.1 },
                 { x: 22.8, y: 19.6 }
             ]
+        },
+        {
+            id: 'mock-bike-1',
+            label: 'bicycle',
+            x: 24.2,
+            y: 15.8 + Math.sin(t * 0.8) * 0.6,
+            yaw: Math.PI / 3,
+            length: 1.1,
+            width: 0.45,
+            speed: 0.6,
+            vx: 0.3,
+            vy: 0.52,
+            predictedPath: [
+                { x: 24.2, y: 15.8 },
+                { x: 24.5, y: 16.3 },
+                { x: 24.8, y: 16.8 }
+            ]
+        },
+        {
+            id: 'mock-unknown-1',
+            label: 'unknown',
+            x: 26.5,
+            y: 18.4,
+            yaw: 0,
+            length: 0.6,
+            width: 0.6,
+            speed: 0,
+            vx: 0,
+            vy: 0,
+            predictedPath: []
         }
     ];
 }
 
 server.listen(port, host, () => {
     console.log(`Mock WebSocket server listening on ws://${host}:${port}`);
+    console.log(`Protocol: ${protocol}`);
     console.log('Open index.html via a local static server, then click "连接模拟数据".');
 });

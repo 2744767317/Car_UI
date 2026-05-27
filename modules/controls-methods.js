@@ -57,6 +57,12 @@ setupEventListeners() {
             this.toggleRealtimeSource();
         });
 
+        document.querySelectorAll('.object-filter').forEach((input) => {
+            input.addEventListener('change', () => {
+                this.updateObjectFiltersFromUI();
+            });
+        });
+
         document.getElementById('close-driving').addEventListener('click', () => {
             this.closeDriving();
         });
@@ -152,6 +158,16 @@ setupEventListeners() {
         });
 
         this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    },
+
+updateObjectFiltersFromUI() {
+        document.querySelectorAll('.object-filter').forEach((input) => {
+            const type = input.dataset.objectType;
+            if (!type) return;
+            this.objectFilters[type] = !!input.checked;
+        });
+        this.updatePerceptionSafety();
+        this.requestRender();
     },
 
 setDrivingMode(mode) {

@@ -7,23 +7,29 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+    <script src="config/app-config.demo.js"></script>
     <script>
-        // 设备接入时可改成实际后端地址
-        window.APP_CONFIG = {
-            gpsEndpoint: '/api/gps/current',
-            routeEndpoint: '/api/route/submit',
-            gpsMethod: 'GET',
-            headers: {},
-            useGpsOnSetEndpoint: false,
-            gpsSource: 'browser',
-            planningMode: 'demo',
-            wsEndpoint: 'ws://localhost:8765/ws',
-            enableWebSocket: false,
-            planningEndpoint: 'http://127.0.0.1:8765/api/route/submit',
-            realtimeAutoConnect: false,
-            realtimeReconnectMs: 1500,
-            realtimePoseTimeoutMs: 3000
-        };
+        (function loadRuntimeAppConfig() {
+            const profiles = {
+                demo: 'config/app-config.demo.js',
+                'autoware-local': 'config/app-config.autoware-local.js',
+                vehicle: 'config/app-config.vehicle.js',
+                'vehicle-test': 'config/app-config.vehicle.js'
+            };
+            const params = new URLSearchParams(window.location.search);
+            const requested = params.get('appConfig') || params.get('config') || 'demo';
+            const profile = String(requested).trim().toLowerCase();
+            const src = profiles[profile];
+
+            if (!src) {
+                console.warn(`未知配置 profile: ${profile}，已回退到 demo`);
+                return;
+            }
+
+            if (profile !== 'demo') {
+                document.write(`<script src="${src}"><\/script>`);
+            }
+        })();
 
         // 场景默认配置：首次打开时会按这里加载
         // 后续你在页面上的调整会自动保存，下次打开优先恢复保存值
@@ -133,6 +139,60 @@
                         <div>
                             <span>定位坐标系</span>
                             <strong id="realtime-frame">--</strong>
+                        </div>
+                    </div>
+                    <div class="localization-check">
+                        <h4>坐标系检查</h4>
+                        <div>
+                            <span>pose.frame_id</span>
+                            <strong id="check-pose-frame">--</strong>
+                        </div>
+                        <div>
+                            <span>child_frame_id</span>
+                            <strong id="check-child-frame">--</strong>
+                        </div>
+                        <div>
+                            <span>map-&gt;base_link TF 延迟</span>
+                            <strong id="check-tf-delay">--</strong>
+                        </div>
+                        <div>
+                            <span>pose age</span>
+                            <strong id="check-pose-age">--</strong>
+                        </div>
+                        <div>
+                            <span>PCD/OSM 偏移</span>
+                            <strong id="check-map-alignment">--</strong>
+                        </div>
+                        <div>
+                            <span>yaw 来源</span>
+                            <strong id="check-yaw-source">--</strong>
+                        </div>
+                    </div>
+                    <div class="perception-panel">
+                        <h4>感知对象</h4>
+                        <div class="object-filter-grid">
+                            <label><input type="checkbox" class="object-filter" data-object-type="vehicle" checked> vehicle</label>
+                            <label><input type="checkbox" class="object-filter" data-object-type="pedestrian" checked> pedestrian</label>
+                            <label><input type="checkbox" class="object-filter" data-object-type="bicycle" checked> bicycle</label>
+                            <label><input type="checkbox" class="object-filter" data-object-type="unknown" checked> unknown</label>
+                        </div>
+                        <div class="safety-readout">
+                            <div>
+                                <span>最近障碍物距离</span>
+                                <strong id="safety-nearest-distance">--</strong>
+                            </div>
+                            <div>
+                                <span>进入安全区域</span>
+                                <strong id="safety-zone-status">--</strong>
+                            </div>
+                            <div>
+                                <span>trajectory 前方</span>
+                                <strong id="safety-ahead-status">--</strong>
+                            </div>
+                            <div>
+                                <span>TTC 预估</span>
+                                <strong id="safety-ttc">--</strong>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -255,7 +255,7 @@ drawPolylineLayer(points, options = {}) {
 drawDetectedObjects() {
         if (!Array.isArray(this.detectedObjects) || this.detectedObjects.length === 0) return;
 
-        for (const object of this.detectedObjects) {
+        for (const object of this.getVisibleDetectedObjects()) {
             this.drawDetectedObject(object);
         }
     },

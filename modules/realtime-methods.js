@@ -14,10 +14,10 @@ createRealtimeConfig() {
 
         return {
             endpoint: source.wsEndpoint || source.realtimeEndpoint || defaults.endpoint,
-            autoConnect: source.enableWebSocket !== undefined
-                ? !!source.enableWebSocket
-                : source.realtimeAutoConnect !== undefined
+            autoConnect: source.realtimeAutoConnect !== undefined
                 ? !!source.realtimeAutoConnect
+                : source.enableWebSocket !== undefined
+                ? !!source.enableWebSocket
                 : defaults.autoConnect,
             reconnectMs: Number.isFinite(Number(source.realtimeReconnectMs))
                 ? Math.max(300, Number(source.realtimeReconnectMs))
@@ -33,6 +33,8 @@ createRealtimeConfig() {
         this.updateRealtimeStatus('未连接', 'offline');
         this.updatePlanningModeStatus();
         this.updatePlanningStatus('待命', 'offline');
+        this.updateLocalizationCheckPanel();
+        this.updatePerceptionSafetyPanel();
         this.updateRealtimeButton();
 
         if (!this.realtimeHealthTimer) {
@@ -168,6 +170,7 @@ checkRealtimeHealth() {
         if (age > this.realtimeConfig.poseTimeoutMs) {
             this.updateRealtimeStatus('数据超时', 'warning');
             this.setStatusValue('localization-status', '超时', 'warning');
+            this.setLocalizationCheckValue('check-pose-age', `${Math.round(age)} ms`, 'warning');
             this.connectionStatus = 'stale';
         }
     },
@@ -231,14 +234,21 @@ applyRealtimePose(rawPose) {
         const yaw = this.readRealtimeNumber(rawPose.yaw, rawPose.heading, rawPose.theta);
         const speed = this.readRealtimeNumber(rawPose.speed, rawPose.velocity, rawPose.linearVelocity);
         const frameId = String(rawPose.frame_id || rawPose.frameId || rawPose.header?.frame_id || 'map');
+        const childFrameId = String(rawPose.child_frame_id || rawPose.childFrameId || rawPose.childFrame || 'base_link');
         const timestamp = this.readRealtimeNumber(rawPose.timestamp, rawPose.stamp, rawPose.header?.stamp?.sec);
+        const tfDelayMs = this.readRealtimeNumber(rawPose.tf_delay_ms, rawPose.tfDelayMs, rawPose.transform_delay_ms);
+        const poseAgeMs = this.readRealtimeNumber(rawPose.pose_age_ms, rawPose.poseAgeMs);
+        const yawSource = rawPose.yaw_source || rawPose.yawSource || rawPose.headingSource || 'localization';
+        const mapAlignment = rawPose.map_alignment || rawPose.mapAlignment || rawPose.pcd_osm_alignment || rawPose.pcdOsmAlignment || '';
         const point = this.clampPointToBounds({ x, y });
+        const poseTimestamp = Number.isFinite(timestamp) && timestamp > 10000000000 ? timestamp : Date.now();
 
         this.stopPlay();
         this.carPosition = point;
         this.vehiclePose = {
             type: 'vehicle_pose',
             frame_id: frameId,
+            child_frame_id: childFrameId,
             x: point.x,
             y: point.y,
             z: Number.isFinite(z) ? z : 0,
@@ -246,7 +256,11 @@ applyRealtimePose(rawPose) {
             pitch: Number.isFinite(pitch) ? pitch : 0,
             yaw: Number.isFinite(yaw) ? yaw : null,
             speed: Number.isFinite(speed) ? speed : null,
-            timestamp: Number.isFinite(timestamp) && timestamp > 10000000000 ? timestamp : Date.now()
+            timestamp: poseTimestamp,
+            tf_delay_ms: Number.isFinite(tfDelayMs) ? tfDelayMs : null,
+            pose_age_ms: Number.isFinite(poseAgeMs) ? poseAgeMs : Math.max(0, Date.now() - poseTimestamp),
+            yaw_source: String(yawSource || 'localization'),
+            map_alignment: String(mapAlignment || '')
         };
         this.realtimeLastPose = this.vehiclePose;
         this.vehicleSpeed = Number.isFinite(speed) ? speed : 0;
@@ -258,6 +272,8 @@ applyRealtimePose(rawPose) {
 
         this.setStatusValue('localization-status', frameId === 'map' ? '正常' : `Frame ${frameId}`, frameId === 'map' ? 'normal' : 'warning');
         this.updateRealtimePoseText();
+        this.updateLocalizationCheckPanel();
+        this.updatePerceptionSafety();
         this.requestRender();
         return true;
     },
@@ -323,6 +339,7 @@ applyRealtimeVehicleStatus(rawStatus) {
         this.pendingAutowareGoal = null;
         this.updatePathDistance(this.trajectoryPoints);
         this.updatePlanningStatus('已接收轨迹', 'normal');
+        this.updatePerceptionSafety();
         this.requestRender();
         return true;
     },
@@ -344,6 +361,7 @@ applyDetectedObjects(rawObjects) {
             .map((object) => this.normalizeDetectedObject(object))
             .filter(Boolean);
 
+        this.updatePerceptionSafety();
         this.requestRender();
         return true;
     },
@@ -364,9 +382,12 @@ normalizeDetectedObject(object) {
         const speed = this.readRealtimeNumber(object.speed);
         const predictedPath = this.normalizePredictedPath(object.predictedPath || object.predicted_path || object.predicted_paths?.[0]?.path);
 
+        const label = this.resolveObjectLabel(object);
+
         return {
             id: object.id || object.uuid || object.object_id || '',
-            label: object.label || object.type || object.classification || object.semantic?.type || 'object',
+            label,
+            category: this.normalizeObjectCategory(label),
             x,
             y,
             yaw: Number.isFinite(yaw) ? yaw : 0,
@@ -394,6 +415,142 @@ normalizePointList(rawPoints) {
 
 normalizePredictedPath(path) {
         return this.normalizePointList(path);
+    },
+
+resolveObjectLabel(object) {
+        const classification = Array.isArray(object.classification)
+            ? object.classification[0]?.label || object.classification[0]?.type
+            : object.classification;
+        const label = object.label || object.type || classification || object.semantic?.type || 'object';
+        return String(label || 'object');
+    },
+
+normalizeObjectCategory(label) {
+        const value = String(label || '').toLowerCase();
+        if (value.includes('pedestrian') || value.includes('person')) return 'pedestrian';
+        if (value.includes('bicycle') || value.includes('bike') || value.includes('cyclist')) return 'bicycle';
+        if (value.includes('vehicle') || value.includes('car') || value.includes('truck') || value.includes('bus')) return 'vehicle';
+        return 'unknown';
+    },
+
+getVisibleDetectedObjects() {
+        if (!Array.isArray(this.detectedObjects)) return [];
+        return this.detectedObjects.filter((object) => {
+            const category = object.category || this.normalizeObjectCategory(object.label);
+            return this.objectFilters?.[category] !== false;
+        });
+    },
+
+updatePerceptionSafety() {
+        const objects = this.getVisibleDetectedObjects();
+        const ego = this.vehiclePose || this.realtimeLastPose || this.carPosition;
+        const trajectory = this.trajectoryPoints?.length ? this.trajectoryPoints : this.pathPoints;
+
+        if (!ego || !Number.isFinite(ego.x) || !Number.isFinite(ego.y) || !objects.length) {
+            this.objectSafety = {
+                nearestDistance: null,
+                inSafetyZone: false,
+                aheadOnTrajectory: false,
+                ttc: null
+            };
+            this.updatePerceptionSafetyPanel();
+            return;
+        }
+
+        let nearestDistance = Infinity;
+        let inSafetyZone = false;
+        let aheadOnTrajectory = false;
+        let ttc = Infinity;
+
+        for (const object of objects) {
+            const dx = object.x - ego.x;
+            const dy = object.y - ego.y;
+            const distance = Math.hypot(dx, dy);
+            if (distance < nearestDistance) nearestDistance = distance;
+            if (distance <= this.safetyZoneRadius) inSafetyZone = true;
+
+            const ahead = this.isObjectAheadOnTrajectory(object, trajectory, ego);
+            if (ahead) aheadOnTrajectory = true;
+
+            const closingSpeed = this.estimateClosingSpeed(object, dx, dy, distance);
+            if (closingSpeed > 0.05) {
+                ttc = Math.min(ttc, distance / closingSpeed);
+            }
+        }
+
+        this.objectSafety = {
+            nearestDistance: Number.isFinite(nearestDistance) ? nearestDistance : null,
+            inSafetyZone,
+            aheadOnTrajectory,
+            ttc: Number.isFinite(ttc) ? ttc : null
+        };
+        this.updatePerceptionSafetyPanel();
+    },
+
+isObjectAheadOnTrajectory(object, trajectory, ego) {
+        if (!Array.isArray(trajectory) || trajectory.length < 2) return false;
+
+        for (const point of trajectory) {
+            if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) continue;
+            const fromEgo = Math.hypot(point.x - ego.x, point.y - ego.y);
+            if (fromEgo > this.trajectoryAheadDistance) continue;
+
+            const lateral = Math.hypot(object.x - point.x, object.y - point.y);
+            if (lateral <= this.trajectoryLateralThreshold) return true;
+        }
+
+        return false;
+    },
+
+estimateClosingSpeed(object, dx, dy, distance) {
+        if (!Number.isFinite(distance) || distance <= 0.001) return null;
+
+        const objectVx = Number.isFinite(object.vx)
+            ? object.vx
+            : Math.cos(object.yaw || 0) * (Number.isFinite(object.speed) ? object.speed : 0);
+        const objectVy = Number.isFinite(object.vy)
+            ? object.vy
+            : Math.sin(object.yaw || 0) * (Number.isFinite(object.speed) ? object.speed : 0);
+        const egoSpeed = Number.isFinite(this.vehicleSpeed) ? this.vehicleSpeed : 0;
+        const egoYaw = Number.isFinite(this.vehicleYaw) ? this.vehicleYaw : 0;
+        const egoVx = Math.cos(egoYaw) * egoSpeed;
+        const egoVy = Math.sin(egoYaw) * egoSpeed;
+        const unitX = dx / distance;
+        const unitY = dy / distance;
+        const relativeVx = objectVx - egoVx;
+        const relativeVy = objectVy - egoVy;
+
+        return -(relativeVx * unitX + relativeVy * unitY);
+    },
+
+updatePerceptionSafetyPanel() {
+        const safety = this.objectSafety || {};
+        const nearest = Number(safety.nearestDistance);
+        const ttc = Number(safety.ttc);
+
+        this.setSafetyValue(
+            'safety-nearest-distance',
+            Number.isFinite(nearest) ? `${nearest.toFixed(2)} m` : '--',
+            Number.isFinite(nearest) && nearest <= this.safetyZoneRadius ? 'warning' : 'normal'
+        );
+        this.setSafetyValue('safety-zone-status', safety.inSafetyZone ? '是' : '否', safety.inSafetyZone ? 'error' : 'normal');
+        this.setSafetyValue('safety-ahead-status', safety.aheadOnTrajectory ? '是' : '否', safety.aheadOnTrajectory ? 'warning' : 'normal');
+        this.setSafetyValue(
+            'safety-ttc',
+            Number.isFinite(ttc) ? `${ttc.toFixed(1)} s` : '--',
+            Number.isFinite(ttc) && ttc < 5 ? 'error' : Number.isFinite(ttc) && ttc < 10 ? 'warning' : 'normal'
+        );
+    },
+
+setSafetyValue(id, text, tone = 'normal') {
+        const el = document.getElementById(id);
+        if (!el) return;
+
+        el.textContent = text;
+        el.classList.remove('warning', 'error');
+        if (tone === 'warning' || tone === 'error') {
+            el.classList.add(tone);
+        }
     },
 
 readRealtimeNumber(...values) {
@@ -431,6 +588,49 @@ updateRealtimePoseText() {
 
         if (frameText) {
             frameText.textContent = pose?.frame_id || '--';
+        }
+    },
+
+updateLocalizationCheckPanel() {
+        const pose = this.vehiclePose || this.realtimeLastPose;
+        const poseFrame = pose?.frame_id || '--';
+        const childFrame = pose?.child_frame_id || '--';
+        const tfDelay = Number(pose?.tf_delay_ms);
+        const poseAge = Number(pose?.pose_age_ms);
+        const alignment = pose?.map_alignment || this.getMapAlignmentLabel();
+        const yawSource = pose?.yaw_source || '--';
+
+        this.setLocalizationCheckValue('check-pose-frame', poseFrame, poseFrame === 'map' ? 'normal' : 'warning');
+        this.setLocalizationCheckValue('check-child-frame', childFrame, childFrame === 'base_link' ? 'normal' : 'warning');
+        this.setLocalizationCheckValue(
+            'check-tf-delay',
+            Number.isFinite(tfDelay) ? `${Math.round(tfDelay)} ms` : '--',
+            Number.isFinite(tfDelay) && tfDelay > 200 ? 'warning' : 'normal'
+        );
+        this.setLocalizationCheckValue(
+            'check-pose-age',
+            Number.isFinite(poseAge) ? `${Math.round(poseAge)} ms` : '--',
+            Number.isFinite(poseAge) && poseAge > this.realtimeConfig.poseTimeoutMs ? 'warning' : 'normal'
+        );
+        this.setLocalizationCheckValue('check-map-alignment', alignment, alignment === '已校准' ? 'normal' : 'warning');
+        this.setLocalizationCheckValue('check-yaw-source', yawSource, yawSource === 'fallback' ? 'warning' : 'normal');
+    },
+
+getMapAlignmentLabel() {
+        const hasOffset = Number.isFinite(this.osmOffsetX)
+            && Number.isFinite(this.osmOffsetY)
+            && (Math.abs(this.osmOffsetX) > 0.001 || Math.abs(this.osmOffsetY) > 0.001);
+        return hasOffset ? '已校准' : '未校准';
+    },
+
+setLocalizationCheckValue(id, text, tone = 'normal') {
+        const el = document.getElementById(id);
+        if (!el) return;
+
+        el.textContent = text;
+        el.classList.remove('warning', 'error');
+        if (tone === 'warning' || tone === 'error') {
+            el.classList.add(tone);
         }
     },
 

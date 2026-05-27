@@ -164,7 +164,10 @@ body {
     padding: 10px;
 }
 
-.realtime-readout {
+.realtime-readout,
+.localization-check,
+.perception-panel,
+.safety-readout {
     display: grid;
     grid-template-columns: 1fr;
     gap: 6px;
@@ -174,22 +177,74 @@ body {
     border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.realtime-readout div {
+.localization-check,
+.perception-panel {
+    border-color: rgba(0, 210, 255, 0.18);
+}
+
+.localization-check h4,
+.perception-panel h4 {
+    color: rgba(255, 255, 255, 0.82);
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+
+.object-filter-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 8px;
+}
+
+.object-filter-grid label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: rgba(255, 255, 255, 0.68);
+    font-size: 11px;
+}
+
+.object-filter-grid input {
+    width: 13px;
+    height: 13px;
+    accent-color: #00d2ff;
+}
+
+.realtime-readout div,
+.localization-check div,
+.safety-readout div {
     display: flex;
     justify-content: space-between;
     gap: 10px;
     font-size: 11px;
 }
 
-.realtime-readout span {
+.realtime-readout span,
+.localization-check span,
+.safety-readout span {
     color: rgba(255, 255, 255, 0.58);
 }
 
-.realtime-readout strong {
+.realtime-readout strong,
+.localization-check strong,
+.safety-readout strong {
     color: #00ff88;
     font-family: Consolas, 'Courier New', monospace;
     font-weight: 600;
     text-align: right;
+}
+
+.localization-check strong.warning {
+    color: #ffaa00;
+}
+
+.localization-check strong.error,
+.safety-readout strong.error {
+    color: #ff4757;
+}
+
+.safety-readout strong.warning {
+    color: #ffaa00;
 }
 
 .input-row {

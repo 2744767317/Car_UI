@@ -41,6 +41,38 @@ python -m http.server 5173
 http://127.0.0.1:5173
 ```
 
+## Runtime Config
+
+运行配置已从 `index.html` 拆到 `config/` 目录:
+
+- `config/app-config.demo.js`: 离线演示配置，默认加载
+- `config/app-config.autoware-local.js`: 本地 ROS 2 Gateway / mock Autoware 联调配置
+- `config/app-config.vehicle.js`: 真实测试车配置模板
+
+默认访问:
+
+```text
+http://127.0.0.1:5173
+```
+
+等同于:
+
+```text
+http://127.0.0.1:5173?appConfig=demo
+```
+
+切换到本地 Autoware/mock 联调:
+
+```text
+http://127.0.0.1:5173?appConfig=autoware-local
+```
+
+切换到测试车配置:
+
+```text
+http://127.0.0.1:5173?appConfig=vehicle
+```
+
 ## Mock WebSocket
 
 Phase 2 已加入本地 WebSocket 模拟数据源，用于在接 Autoware 前验证实时数据链路。
@@ -65,7 +97,7 @@ python -m http.server 5173
 
 打开页面后点击左侧面板的 `连接模拟数据`。
 
-默认 `enableWebSocket: false`，所以页面刚打开时不会自动连接实时数据。这样保留原来的离线 demo 行为。
+默认 `realtimeAutoConnect: false`，所以页面刚打开时不会自动连接实时数据。这样保留原来的离线 demo 行为。
 
 操作变化:
 
@@ -102,13 +134,14 @@ python -m http.server 5173
 
 Phase 3 已将路径规划拆成两种模式。
 
-在 `index.html` 的 `window.APP_CONFIG` 中切换:
+在 `config/` 目录的 profile 文件中切换，或通过 URL 参数选择:
 
 ```js
 window.APP_CONFIG = {
+  modeName: 'demo',
   planningMode: 'demo', // demo | autoware
-  wsEndpoint: 'ws://localhost:8765/ws',
-  enableWebSocket: false,
+  wsEndpoint: 'ws://127.0.0.1:8765/ws',
+  realtimeAutoConnect: false,
   planningEndpoint: 'http://127.0.0.1:8765/api/route/submit',
   routeEndpoint: '/api/route/submit'
 };
@@ -187,6 +220,70 @@ window.APP_CONFIG = {
 - `interactionPath-methods.js`: 地图交互、点选、路径规划、播放
 - `render-methods.js`: Canvas 渲染
 - `osmPcd-methods.js`: PCD / OSM / GeoJSON 加载与解析
+
+ROS2 Gateway WebSocket 协议见:
+
+- `docs/ros2-gateway-protocol.md`
+- `docs/bridge-options.md`
+
+### Autoware 定位接入顺序
+
+第一批建议只接定位，不接感知对象。Gateway 优先订阅:
+
+- `/localization/kinematic_state`
+- `/tf`
+- `/tf_static`
+
+`/localization/kinematic_state` 在不同 Autoware 版本里的消息类型可能不同，上车前以实际命令为准:
+
+```bash
+ros2 topic info -v /localization/kinematic_state
+```
+
+四元数到 yaw 的转换必须在 Gateway 完成，前端只接收 `yaw`。上线前必须确认 PCD map、Lanelet2 / OSM、Autoware `map` frame、`odom`、`base_link` 和 Canvas world 坐标一致。
+
+本仓库提供了一个最小 Python 定位网关骨架:
+
+```bash
+python tools/ros2-localization-gateway.py \
+  --kinematic-topic /localization/kinematic_state \
+  --kinematic-type nav_msgs/msg/Odometry \
+  --ws-host 127.0.0.1 \
+  --ws-port 8765
+```
+
+如果车上的 `/localization/kinematic_state` 不是 `nav_msgs/msg/Odometry`，先用 `ros2 topic info -v` 查明类型，再通过 `--kinematic-type` 指定，必要时只改 Gateway 的字段提取逻辑，前端协议保持不变。
+
+前端左侧已预留“坐标系检查”面板，显示:
+
+- `pose.frame_id`
+- `child_frame_id`
+- `map->base_link TF 延迟`
+- `pose age`
+- `PCD/OSM 偏移`
+- `yaw 来源`
+
+### 感知对象接入
+
+定位链路稳定后，可以接:
+
+- `/perception/object_recognition/objects`
+
+Gateway 将 Autoware detected objects 转成前端协议 `perception_objects`。前端已经支持对象矩形框、标签、速度箭头和预测轨迹显示，并新增对象筛选:
+
+- `vehicle`
+- `pedestrian`
+- `bicycle`
+- `unknown`
+
+前端左侧“感知对象”面板会显示调试用安全提示:
+
+- 最近障碍物距离
+- 是否进入安全区域
+- 是否在 trajectory 前方
+- TTC 预估
+
+这些安全提示只用于可视化和测试记录，真实安全决策仍应由 Autoware / Gateway / 车辆控制链路负责。
 
 ## Roadmap
 
