@@ -65,6 +65,16 @@ python -m http.server 5173
 
 打开页面后点击左侧面板的 `连接模拟数据`。
 
+默认 `enableWebSocket: false`，所以页面刚打开时不会自动连接实时数据。这样保留原来的离线 demo 行为。
+
+操作变化:
+
+- 原演示流程不变: 点地图设置起点和终点，`planningMode: 'demo'` 时前端会运行 `runGridAStar()`
+- 新实时流程: 启动 mock WebSocket 后点击 `连接模拟数据`，车辆位置、yaw、速度、frame、感知对象会实时更新
+- 新 Autoware 模拟流程: 将 `planningMode` 改成 `autoware` 后，设置终点时前端只发送 `set_goal`，等待 WebSocket 推送 `trajectory`
+- 路径图层变化: demo 路径是绿色虚线，route 是蓝色粗线，trajectory 是绿色实线
+- 感知图层变化: 连接实时数据后会显示黄色目标框、类别、速度箭头、预测轨迹
+
 模拟服务会持续推送:
 
 - `vehicle_pose`: 车辆实时位置、朝向、速度、frame
