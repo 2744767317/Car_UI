@@ -70,6 +70,7 @@ Initial state sent when a WebSocket client connects.
 ```json
 {
   "type": "snapshot",
+  "protocol": "ros2_gateway.v1",
   "timestamp": 1710000000000,
   "pose": {},
   "status": {},
@@ -79,7 +80,7 @@ Initial state sent when a WebSocket client connects.
 }
 ```
 
-All fields except `type` are optional. The frontend currently consumes `pose`, `status`, and `trajectory`.
+All fields except `type` are optional. The frontend consumes `pose`, `status`, `route`, `trajectory`, and `objects` when present.
 
 ### `vehicle_pose`
 
@@ -293,18 +294,28 @@ HTTP method: `POST`
 ```json
 {
   "type": "set_goal",
+  "protocol": "ros2_gateway.v1",
+  "source": "car_ui",
   "frame_id": "map",
+  "start": {
+    "x": 20.0,
+    "y": 13.5,
+    "z": 0,
+    "yaw": 0,
+    "frame_id": "map"
+  },
   "goal": {
     "x": 23.5,
     "y": 14.9,
     "z": 0,
-    "yaw": 0
+    "yaw": 0,
+    "frame_id": "map"
   },
   "timestamp": 1710000000000
 }
 ```
 
-The Gateway should convert this request to the corresponding Autoware goal / route planning input, then publish `route` and `trajectory` messages back through the WebSocket.
+The Gateway should validate that `start.frame_id`, `goal.frame_id`, and top-level `frame_id` are compatible with the Autoware map frame. It should then convert this request to the corresponding Autoware goal / route planning input and publish `route` and `trajectory` messages back through the WebSocket.
 
 ## Frontend Consumption Rules
 

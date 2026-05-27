@@ -87,6 +87,7 @@ toggleRealtimeSource() {
             this.connectionStatus = 'online';
             this.realtimeReconnectAttempts = 0;
             this.realtimeLastMessageAt = Date.now();
+            this.realtimeLastPoseAt = 0;
             this.updateRealtimeStatus('已连接', 'normal');
             this.updateRealtimeButton();
         });
@@ -164,13 +165,26 @@ scheduleRealtimeReconnect() {
 
 checkRealtimeHealth() {
         if (!this.realtimeEnabled || !this.realtimeConnected) return;
-        if (!this.realtimeLastMessageAt) return;
+        const now = Date.now();
 
-        const age = Date.now() - this.realtimeLastMessageAt;
-        if (age > this.realtimeConfig.poseTimeoutMs) {
+        if (this.realtimeLastPoseAt) {
+            const poseAge = now - this.realtimeLastPoseAt;
+            this.setLocalizationCheckValue('check-pose-age', `${Math.round(poseAge)} ms`, poseAge > this.realtimeConfig.poseTimeoutMs ? 'warning' : 'normal');
+
+            if (poseAge > this.realtimeConfig.poseTimeoutMs) {
+                this.updateRealtimeStatus('定位超时', 'warning');
+                this.setStatusValue('localization-status', '超时', 'warning');
+                this.connectionStatus = 'stale';
+            }
+            return;
+        }
+
+        if (!this.realtimeLastMessageAt) return;
+        const messageAge = now - this.realtimeLastMessageAt;
+        if (messageAge > this.realtimeConfig.poseTimeoutMs) {
             this.updateRealtimeStatus('数据超时', 'warning');
             this.setStatusValue('localization-status', '超时', 'warning');
-            this.setLocalizationCheckValue('check-pose-age', `${Math.round(age)} ms`, 'warning');
+            this.setLocalizationCheckValue('check-pose-age', `${Math.round(messageAge)} ms`, 'warning');
             this.connectionStatus = 'stale';
         }
     },
@@ -192,10 +206,13 @@ handleRealtimeMessage(rawData) {
 
         const type = String(packet.type || '').toLowerCase();
         const data = packet.data && typeof packet.data === 'object' ? packet.data : packet;
+        this.recordRealtimeMessage(type || 'vehicle_pose');
 
         if (type === 'snapshot') {
             this.applyRealtimeVehicleStatus(packet.status || data.status);
+            this.applyRealtimeRoute(packet.route || data.route);
             this.applyRealtimeTrajectory(packet.trajectory || data.trajectory);
+            this.applyDetectedObjects(packet.objects || data.objects || packet.detectedObjects || data.detectedObjects);
             this.applyRealtimePose(packet.pose || data.pose);
             return;
         }
@@ -221,6 +238,16 @@ handleRealtimeMessage(rawData) {
         }
     },
 
+recordRealtimeMessage(type) {
+        const key = String(type || 'unknown');
+        this.realtimeMessageStats = this.realtimeMessageStats || {};
+        const current = this.realtimeMessageStats[key] || { count: 0, lastAt: 0 };
+        this.realtimeMessageStats[key] = {
+            count: current.count + 1,
+            lastAt: Date.now()
+        };
+    },
+
 applyRealtimePose(rawPose) {
         if (!rawPose || typeof rawPose !== 'object') return false;
 
@@ -235,7 +262,7 @@ applyRealtimePose(rawPose) {
         const speed = this.readRealtimeNumber(rawPose.speed, rawPose.velocity, rawPose.linearVelocity);
         const frameId = String(rawPose.frame_id || rawPose.frameId || rawPose.header?.frame_id || 'map');
         const childFrameId = String(rawPose.child_frame_id || rawPose.childFrameId || rawPose.childFrame || 'base_link');
-        const timestamp = this.readRealtimeNumber(rawPose.timestamp, rawPose.stamp, rawPose.header?.stamp?.sec);
+        const timestamp = this.readRealtimeTimestamp(rawPose.timestamp, rawPose.stamp, rawPose.header?.stamp);
         const tfDelayMs = this.readRealtimeNumber(rawPose.tf_delay_ms, rawPose.tfDelayMs, rawPose.transform_delay_ms);
         const poseAgeMs = this.readRealtimeNumber(rawPose.pose_age_ms, rawPose.poseAgeMs);
         const yawSource = rawPose.yaw_source || rawPose.yawSource || rawPose.headingSource || 'localization';
@@ -263,6 +290,7 @@ applyRealtimePose(rawPose) {
             map_alignment: String(mapAlignment || '')
         };
         this.realtimeLastPose = this.vehiclePose;
+        this.realtimeLastPoseAt = Date.now();
         this.vehicleSpeed = Number.isFinite(speed) ? speed : 0;
         this.vehiclePoseTimestamp = this.vehiclePose.timestamp;
 
@@ -557,6 +585,24 @@ readRealtimeNumber(...values) {
         for (const value of values) {
             const num = Number(value);
             if (Number.isFinite(num)) return num;
+        }
+        return null;
+    },
+
+readRealtimeTimestamp(...values) {
+        for (const value of values) {
+            if (value && typeof value === 'object') {
+                const sec = Number(value.sec ?? value.secs);
+                const nanosec = Number(value.nanosec ?? value.nsec ?? value.nanoseconds);
+                if (Number.isFinite(sec)) {
+                    const msFromNs = Number.isFinite(nanosec) ? nanosec / 1_000_000 : 0;
+                    return (sec * 1000) + msFromNs;
+                }
+            }
+
+            const num = Number(value);
+            if (!Number.isFinite(num)) continue;
+            return num > 10000000000 ? num : num * 1000;
         }
         return null;
     },

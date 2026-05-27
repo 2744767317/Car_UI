@@ -161,8 +161,12 @@ function getStatus(now) {
 function createSnapshot(now) {
     return {
         type: 'snapshot',
+        protocol,
+        timestamp: now,
         pose: getPose(now),
-        status: getStatus(now)
+        status: getStatus(now),
+        route,
+        objects: getPerceptionObjects(now)
     };
 }
 
@@ -217,14 +221,29 @@ const server = http.createServer((req, res) => {
                 latestGoal = null;
             }
 
+            const now = Date.now();
+            const goalId = latestGoal?.goal_id || latestGoal?.id || `mock-goal-${now}`;
             const trajectory = buildTrajectoryFromGoal(latestGoal);
-            const packet = { type: 'trajectory', points: trajectory, goal: latestGoal, timestamp: Date.now() };
+            const packet = {
+                type: 'trajectory',
+                protocol,
+                frame_id: 'map',
+                goal_id: goalId,
+                points: trajectory,
+                goal: latestGoal,
+                timestamp: now
+            };
             for (const socket of clients) {
                 send(socket, packet);
             }
 
             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify({ ok: true, trajectoryPoints: trajectory.length }));
+            res.end(JSON.stringify({
+                ok: true,
+                protocol,
+                goal_id: goalId,
+                trajectoryPoints: trajectory.length
+            }));
         });
         return;
     }

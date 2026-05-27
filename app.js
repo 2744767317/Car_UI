@@ -98,6 +98,7 @@ class PointCloudVisualizer {
         this.realtimeHealthTimer = 0;
         this.realtimeLastMessageAt = 0;
         this.realtimeLastPose = null;
+        this.realtimeMessageStats = {};
         this.sceneStorageKey = 'point_cloud_scene_v1';
         this.scenePreset = this.createScenePresetConfig();
         this.currentPcdFile = this.scenePreset.pcdFile || 'pointcloud_map.pcd';

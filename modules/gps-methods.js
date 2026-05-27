@@ -383,12 +383,22 @@ async submitPlanningGoalToBackend() {
 
         const payload = {
             type: 'set_goal',
+            protocol: 'ros2_gateway.v1',
             frame_id: 'map',
+            source: 'car_ui',
+            start: {
+                x: this.startPoint.x,
+                y: this.startPoint.y,
+                z: 0,
+                yaw: Number.isFinite(this.vehicleYaw) ? this.vehicleYaw : 0,
+                frame_id: 'map'
+            },
             goal: {
                 x: this.endPoint.x,
                 y: this.endPoint.y,
                 z: 0,
-                yaw: Number.isFinite(this.selectedGoalYaw) ? this.selectedGoalYaw : 0
+                yaw: Number.isFinite(this.selectedGoalYaw) ? this.selectedGoalYaw : 0,
+                frame_id: 'map'
             },
             timestamp: Date.now()
         };

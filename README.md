@@ -181,12 +181,22 @@ window.APP_CONFIG = {
 ```json
 {
   "type": "set_goal",
+  "protocol": "ros2_gateway.v1",
+  "source": "car_ui",
   "frame_id": "map",
+  "start": {
+    "x": 20.0,
+    "y": 13.5,
+    "z": 0,
+    "yaw": 0,
+    "frame_id": "map"
+  },
   "goal": {
     "x": 23.5,
     "y": 14.9,
     "z": 0,
-    "yaw": 0
+    "yaw": 0,
+    "frame_id": "map"
   },
   "timestamp": 1710000000000
 }
